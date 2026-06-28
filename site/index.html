@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>physics_engine — live N-body sandbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0e;
+    --panel: #11131a;
+    --panel-edge: #1d212b;
+    --amber: #ffb000;
+    --amber-dim: #8a5f00;
+    --cyan: #4fd8e8;
+    --cyan-dim: #2a7680;
+    --magenta: #ff5fa0;
+    --text: #ededed;
+    --text-dim: #6b7280;
+    --text-faint: #3a3f4a;
+    --grid-line: #181b22;
+    --danger: #ff4d4d;
+    --good: #3ddc84;
+    --radius: 3px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    overflow: hidden;
+    height: 100%;
+    width: 100%;
+  }
+
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  #app {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+  }
+
+  /* ---------- Canvas (the hero) ---------- */
+  #canvas-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+
+  #sim-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background:
+      radial-gradient(ellipse at 50% 40%, #0d0f16 0%, var(--bg) 70%);
+    cursor: crosshair;
+  }
+
+  /* ---------- Top strip: title + readouts ---------- */
+  #top-strip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 18px 22px;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  #title-block {
+    pointer-events: auto;
+  }
+
+  #title-block h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text);
+  }
+
+  #title-block .sub {
+    margin-top: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    letter-spacing: 0.03em;
+  }
+
+  /* ---------- Energy sparkline instrument ---------- */
+  #scope {
+    pointer-events: auto;
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: var(--radius);
+    padding: 10px 14px 8px;
+    min-width: 240px;
+  }
+
+  #scope .scope-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+
+  #scope .scope-label .drift-value {
+    color: var(--amber);
+    font-weight: 600;
+  }
+
+  #scope .scope-label .drift-value.bad { color: var(--danger); }
+  #scope .scope-label .drift-value.good { color: var(--good); }
+
+  #energy-canvas {
+    display: block;
+    width: 220px;
+    height: 46px;
+  }
+
+  #scope .scope-foot {
+    margin-top: 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-faint);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* ---------- Bottom-left: momentum readout ---------- */
+  #momentum-strip {
+    position: absolute;
+    bottom: 18px;
+    left: 22px;
+    z-index: 5;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    background: rgba(10,10,14,0.7);
+    padding: 6px 10px;
+    border: 1px solid var(--panel-edge);
+    border-radius: var(--radius);
+    pointer-events: none;
+  }
+
+  #momentum-strip .label { color: var(--text-faint); margin-right: 6px; }
+  #momentum-strip .val { color: var(--cyan); }
+
+  /* ---------- Hint text ---------- */
+  #hint {
+    position: absolute;
+    bottom: 18px;
+    right: 22px;
+    z-index: 5;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-faint);
+    text-align: right;
+    pointer-events: none;
+    max-width: 280px;
+    line-height: 1.5;
+  }
+
+  /* ---------- Side control rack ---------- */
+  #rack {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-left: 1px solid var(--panel-edge);
+    overflow-y: auto;
+    padding: 18px 16px 24px;
+    z-index: 6;
+  }
+
+  #rack h2 {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 18px 0 10px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  #rack h2:first-child { margin-top: 0; }
+
+  .rack-section {
+    border-top: 1px solid var(--grid-line);
+    padding-top: 4px;
+  }
+
+  .rack-section:first-child {
+    border-top: none;
+  }
+
+  /* Integrator buttons */
+  .integrator-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .integ-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    background: #161922;
+    border: 1px solid var(--panel-edge);
+    color: var(--text-dim);
+    border-radius: var(--radius);
+    padding: 9px 6px;
+    cursor: pointer;
+    text-align: left;
+    line-height: 1.3;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .integ-btn:hover {
+    border-color: var(--text-dim);
+    color: var(--text);
+  }
+
+  .integ-btn.active {
+    border-color: var(--amber);
+    color: var(--amber);
+    background: #1a1308;
+  }
+
+  .integ-btn .order-tag {
+    display: block;
+    font-size: 8.5px;
+    color: var(--text-faint);
+    margin-top: 2px;
+  }
+
+  .integ-btn.active .order-tag { color: var(--amber-dim); }
+
+  /* Slider rows */
+  .slider-row {
+    margin-bottom: 12px;
+  }
+
+  .slider-row .row-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 5px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .slider-row .row-label .val { color: var(--cyan); }
+
+  input[type=range] {
+    width: 100%;
+    -webkit-appearance: none;
+    background: transparent;
+    height: 16px;
+  }
+
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 3px;
+    background: var(--panel-edge);
+    border-radius: 2px;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 11px;
+    height: 11px;
+    margin-top: -4px;
+    background: var(--amber);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  input[type=range]::-moz-range-track {
+    height: 3px;
+    background: var(--panel-edge);
+    border-radius: 2px;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 11px;
+    height: 11px;
+    background: var(--amber);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  /* Preset buttons */
+  .preset-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 12px;
+    background: #161922;
+    border: 1px solid var(--panel-edge);
+    color: var(--text);
+    border-radius: var(--radius);
+    padding: 9px 10px;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .preset-btn:hover {
+    border-color: var(--cyan-dim);
+    background: #131822;
+  }
+
+  .preset-btn .preset-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8.5px;
+    color: var(--text-faint);
+  }
+
+  /* Action buttons */
+  .action-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  .action-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 9px 6px;
+    border-radius: var(--radius);
+    border: 1px solid var(--panel-edge);
+    background: #161922;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .action-btn:hover { color: var(--text); border-color: var(--text-dim); }
+  .action-btn.primary { color: var(--amber); border-color: var(--amber-dim); }
+  .action-btn.primary:hover { border-color: var(--amber); background: #1a1308; }
+  .action-btn.danger { color: var(--text-dim); }
+  .action-btn.danger:hover { color: var(--danger); border-color: var(--danger); }
+
+  /* Body inspector */
+  #body-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-height: 160px;
+    overflow-y: auto;
+  }
+
+  .body-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    padding: 5px 7px;
+    background: #161922;
+    border-radius: var(--radius);
+  }
+
+  .body-row .swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .body-row .mass-val { color: var(--text); margin-left: auto; }
+
+  .body-row .del-btn {
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0 2px;
+    line-height: 1;
+  }
+  .body-row .del-btn:hover { color: var(--danger); }
+
+  #empty-bodies {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    color: var(--text-faint);
+    padding: 8px 0;
+  }
+
+  footer.rack-foot {
+    margin-top: 22px;
+    padding-top: 14px;
+    border-top: 1px solid var(--grid-line);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-faint);
+    line-height: 1.6;
+  }
+
+  footer.rack-foot a { color: var(--text-dim); text-decoration: none; }
+  footer.rack-foot a:hover { color: var(--cyan); }
+
+  /* Mobile */
+  @media (max-width: 760px) {
+    #app { flex-direction: column; }
+    #rack {
+      width: 100%;
+      height: 42vh;
+      border-left: none;
+      border-top: 1px solid var(--panel-edge);
+      order: 2;
+    }
+    #canvas-wrap { order: 1; height: 58vh; }
+    #top-strip { flex-direction: column; gap: 10px; }
+    #scope { min-width: 0; width: calc(100vw - 44px); }
+    #energy-canvas { width: 100%; }
+    #hint { display: none; }
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+
+  /* Focus visibility */
+  button:focus-visible, input:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="canvas-wrap">
+    <canvas id="sim-canvas"></canvas>
+
+    <div id="top-strip">
+      <div id="title-block">
+        <h1>physics_engine</h1>
+        <div class="sub">live N-body gravity &middot; in-browser port</div>
+      </div>
+
+      <div id="scope">
+        <div class="scope-label">
+          <span>ENERGY DRIFT</span>
+          <span class="drift-value mono" id="drift-readout">0.00%</span>
+        </div>
+        <canvas id="energy-canvas" width="220" height="46"></canvas>
+        <div class="scope-foot">
+          <span id="integrator-readout">velocity_verlet</span>
+          <span id="step-readout">step 0</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="momentum-strip">
+      <span class="label">|p|</span><span class="val mono" id="momentum-readout">0.000e+0</span>
+      <span class="label" style="margin-left:14px;">bodies</span><span class="val mono" id="body-count">0</span>
+    </div>
+
+    <div id="hint">
+      click + drag to launch a body<br>
+      shift+click to place a stationary anchor mass
+    </div>
+  </div>
+
+  <div id="rack">
+    <div class="rack-section">
+      <h2>Integrator</h2>
+      <div class="integrator-grid" id="integrator-grid">
+        <button class="integ-btn" data-integ="euler">Euler<span class="order-tag">1st · unstable</span></button>
+        <button class="integ-btn" data-integ="semi_implicit_euler">Semi-implicit<span class="order-tag">1st · symplectic</span></button>
+        <button class="integ-btn active" data-integ="velocity_verlet">Velocity Verlet<span class="order-tag">2nd · default</span></button>
+        <button class="integ-btn" data-integ="rk4">RK4<span class="order-tag">4th · non-symp.</span></button>
+      </div>
+    </div>
+
+    <div class="rack-section">
+      <h2>Parameters</h2>
+      <div class="slider-row">
+        <div class="row-label"><span>G</span><span class="val mono" id="g-val">1.00</span></div>
+        <input type="range" id="g-slider" min="0" max="3" step="0.05" value="1.0">
+      </div>
+      <div class="slider-row">
+        <div class="row-label"><span>dt (timestep)</span><span class="val mono" id="dt-val">0.010</span></div>
+        <input type="range" id="dt-slider" min="0.0005" max="0.02" step="0.0005" value="0.01">
+      </div>
+      <div class="slider-row">
+        <div class="row-label"><span>trail length</span><span class="val mono" id="trail-val">120</span></div>
+        <input type="range" id="trail-slider" min="0" max="400" step="10" value="120">
+      </div>
+    </div>
+
+    <div class="rack-section">
+      <h2>Presets</h2>
+      <div class="preset-list">
+        <button class="preset-btn" data-preset="two-body"><span>Two-body orbit</span><span class="preset-tag">sun + planet</span></button>
+        <button class="preset-btn" data-preset="figure-eight"><span>Figure-eight</span><span class="preset-tag">3-body choreography</span></button>
+        <button class="preset-btn" data-preset="cluster"><span>Random cluster</span><span class="preset-tag">12 bodies</span></button>
+        <button class="preset-btn" data-preset="binary-chaos"><span>Binary + interloper</span><span class="preset-tag">chaotic</span></button>
+      </div>
+      <div class="action-row">
+        <button class="action-btn primary" id="play-pause-btn">⏸ pause</button>
+        <button class="action-btn danger" id="clear-btn">clear all</button>
+      </div>
+    </div>
+
+    <div class="rack-section">
+      <h2>Bodies</h2>
+      <div id="body-list"></div>
+      <div id="empty-bodies" style="display:none;">no bodies — pick a preset or click the canvas</div>
+    </div>
+
+    <footer class="rack-foot">
+      JS port of <a href="https://github.com/pinkTshirt/physics-engine" target="_blank" rel="noopener">pinkTshirt/physics-engine</a>.<br>
+      Same force law &amp; integrators, validated against the figure-eight benchmark (energy drift &lt; 1e-9 over one period).
+    </footer>
+  </div>
+</div>
+
+<script src="physics.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
