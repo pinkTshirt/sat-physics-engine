@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Learn — physics_engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$']],
+      displayMath: [['$$', '$$']]
+    },
+    options: {
+      skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+    },
+    svg: { fontCache: 'global' }
+  };
+</script>
+<script src="vendor/mathjax/tex-svg.js" id="MathJax-script" async></script>
+<style>
+  :root {
+    --bg: #0a0a0e;
+    --panel: #11131a;
+    --panel-edge: #1d212b;
+    --amber: #ffb000;
+    --amber-dim: #8a5f00;
+    --cyan: #4fd8e8;
+    --cyan-dim: #2a7680;
+    --magenta: #ff5fa0;
+    --text: #ededed;
+    --text-dim: #6b7280;
+    --text-faint: #3a3f4a;
+    --grid-line: #181b22;
+    --danger: #ff4d4d;
+    --good: #3ddc84;
+    --radius: 3px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    width: 100%;
+  }
+
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  #app { min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* ---------- Top bar ---------- */
+  #top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--panel-edge);
+    background: var(--panel);
+    flex-wrap: wrap;
+  }
+
+  #title-block h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  #title-block .sub {
+    margin-top: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    letter-spacing: 0.03em;
+  }
+
+  #top-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .tab-group {
+    display: flex;
+    background: #161922;
+    border: 1px solid var(--panel-edge);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .tree-tab {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .tree-tab + .tree-tab { border-left: 1px solid var(--panel-edge); }
+  .tree-tab:hover { color: var(--text); }
+  .tree-tab.active { color: var(--amber); background: #1a1308; }
+
+  .back-link {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-decoration: none;
+    border: 1px solid var(--panel-edge);
+    border-radius: var(--radius);
+    padding: 9px 12px;
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  .back-link:hover { color: var(--text); border-color: var(--text-dim); }
+
+  #reset-view-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: #161922;
+    border: 1px solid var(--panel-edge);
+    color: var(--text-dim);
+    border-radius: var(--radius);
+    padding: 9px 12px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  #reset-view-btn:hover { color: var(--text); border-color: var(--text-dim); }
+
+  /* ---------- SAT disclaimer ---------- */
+  #sat-disclaimer {
+    display: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    line-height: 1.6;
+    color: var(--amber);
+    background: #1a1308;
+    border-bottom: 1px solid var(--amber-dim);
+    padding: 9px 22px;
+  }
+
+  /* ---------- Main layout ---------- */
+  #main {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+
+  #stage-wrap {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 50% 40%, #0d0f16 0%, var(--bg) 70%);
+  }
+
+  #mindmap-stage {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1100px;
+    height: 900px;
+    transform-origin: top left;
+  }
+
+  #edges-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1100px;
+    height: 900px;
+    pointer-events: none;
+  }
+
+  .node {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    font-family: 'JetBrains Mono', monospace;
+    text-align: center;
+    cursor: pointer;
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.25;
+    transition: border-color 0.15s, color 0.15s, background 0.15s, box-shadow 0.15s;
+    --node-color: var(--amber);
+  }
+
+  .node span { display: block; }
+
+  .node-root {
+    width: 168px;
+    height: 168px;
+    background: #14161e;
+    border: 1.5px solid var(--panel-edge);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    z-index: 3;
+  }
+  .node-root:hover { border-color: var(--text-dim); }
+  .node-root.active { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(79,216,232,0.15); }
+
+  .node-branch {
+    width: 140px;
+    height: 70px;
+    border-radius: 35px;
+    background: #14161e;
+    border: 1.5px solid var(--node-color);
+    color: var(--node-color);
+    font-size: 11px;
+    font-weight: 600;
+    z-index: 2;
+  }
+  .node-branch:hover { background: #181a24; }
+  .node-branch.active, .node-branch.expanded {
+    background: color-mix(in srgb, var(--node-color) 14%, #14161e);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-color) 22%, transparent);
+  }
+
+  .node-leaf {
+    width: 122px;
+    height: 56px;
+    border-radius: 28px;
+    background: #14161e;
+    border: 1px solid var(--node-color);
+    color: var(--text-dim);
+    font-size: 10px;
+    z-index: 1;
+    opacity: 0;
+    animation: leaf-in 0.18s ease forwards;
+  }
+  .node-leaf:hover { color: var(--text); }
+  .node-leaf.active {
+    color: var(--text);
+    background: color-mix(in srgb, var(--node-color) 16%, #14161e);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-color) 24%, transparent);
+  }
+
+  @keyframes leaf-in {
+    from { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+    to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .node-leaf { animation: none; opacity: 1; }
+  }
+
+  /* ---------- Detail panel ---------- */
+  #detail-panel-wrap {
+    width: 380px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-left: 1px solid var(--panel-edge);
+    overflow-y: auto;
+    padding: 18px 20px 28px;
+  }
+
+  #panel-breadcrumb {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 14px;
+  }
+
+  .panel-title {
+    font-size: 19px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  .panel-summary {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    line-height: 1.5;
+    border-left: 2px solid var(--panel-edge);
+    padding-left: 10px;
+  }
+
+  .panel-body { font-size: 14.5px; line-height: 1.65; color: var(--text); }
+  .panel-body p { margin: 0 0 14px; }
+  .panel-body p:last-child { margin-bottom: 0; }
+  .panel-body strong { color: var(--amber); }
+  .panel-body code {
+    font-family: 'JetBrains Mono', monospace;
+    background: #1a1d26;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.9em;
+  }
+  .panel-body mjx-container { font-size: 102% !important; }
+
+  /* ---------- Mobile accordion ---------- */
+  #accordion-wrap { display: none; padding: 18px 18px 32px; }
+
+  .acc-root {
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .acc-root-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+
+  details.acc-branch {
+    border: 1px solid var(--panel-edge);
+    border-left: 3px solid var(--node-color, var(--amber));
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+    background: var(--panel);
+  }
+  details.acc-branch > summary {
+    padding: 13px 14px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  details.acc-branch > summary::-webkit-details-marker { display: none; }
+  .acc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .acc-branch-body { padding: 0 14px 14px; font-size: 13.5px; color: var(--text-dim); }
+
+  details.acc-leaf {
+    margin: 0 14px 10px;
+    border-top: 1px solid var(--grid-line);
+    padding-top: 8px;
+  }
+  details.acc-leaf > summary {
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    color: var(--cyan);
+    list-style: none;
+    padding-bottom: 6px;
+  }
+  details.acc-leaf > summary::-webkit-details-marker { display: none; }
+  .acc-leaf-body { padding: 0 0 6px 4px; font-size: 14px; }
+
+  footer.page-foot {
+    margin-top: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    color: var(--text-faint);
+    line-height: 1.6;
+    padding: 0 18px 6px;
+  }
+  footer.page-foot a { color: var(--text-dim); text-decoration: none; }
+  footer.page-foot a:hover { color: var(--cyan); }
+
+  /* ---------- Breakpoint ---------- */
+  @media (max-width: 760px) {
+    #main { display: none; }
+    #accordion-wrap { display: block; }
+    #top-bar { padding: 14px 16px; }
+    #title-block h1 { font-size: 14px; }
+  }
+
+  button:focus-visible, a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="top-bar">
+    <div id="title-block">
+      <h1>Learn: the physics engine</h1>
+      <div class="sub">an interactive mind map of every law &amp; equation running on this site</div>
+    </div>
+    <div id="top-bar-right">
+      <div class="tab-group">
+        <button class="tree-tab active" data-tree="live">Live simulation</button>
+        <button class="tree-tab" data-tree="sat">SAT collision engine</button>
+      </div>
+      <button id="reset-view-btn">reset view</button>
+      <a class="back-link" href="index.html">&larr; back to simulation</a>
+    </div>
+  </div>
+
+  <div id="sat-disclaimer">
+    ⚠ reference only — this collision/impulse math is documented in the repo's README but is not wired into the live JS sandbox on this site (which only runs N-body gravity).
+  </div>
+
+  <!-- Desktop / tablet: radial mind map -->
+  <div id="main">
+    <div id="stage-wrap">
+      <div id="mindmap-stage">
+        <svg id="edges-svg" width="1100" height="900"></svg>
+      </div>
+    </div>
+    <div id="detail-panel-wrap">
+      <div id="panel-breadcrumb"></div>
+      <div id="detail-panel"></div>
+    </div>
+  </div>
+
+  <!-- Mobile: accordion -->
+  <div id="accordion-wrap">
+    <div id="accordion-root"></div>
+  </div>
+
+  <footer class="page-foot">
+    Mind map of <a href="https://github.com/pinkTshirt/sat-physics-engine" target="_blank" rel="noopener">pinkTshirt/sat-physics-engine</a> &mdash;
+    left tab mirrors <code class="mono">site/physics.js</code> exactly; right tab mirrors the README's documented SAT collision math.
+  </footer>
+</div>
+
+<script src="learn.js"></script>
+</body>
+</html>
