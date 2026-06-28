@@ -5,135 +5,405 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="A small, vectorized N-body gravity engine in Python with verifiable simulation examples."
+      content="An in-browser N-body gravity simulation environment based on the physics_engine project."
     />
-    <title>physics_engine | N-body gravity in Python</title>
+    <title>physics_engine | Browser Simulation Lab</title>
     <link rel="stylesheet" href="site/styles.css" />
   </head>
   <body>
     <header class="site-header">
-      <a class="brand" href="#top">physics_engine</a>
+      <a class="brand" href="#top">physics_engine lab</a>
       <nav aria-label="Primary">
-        <a href="#examples">Examples</a>
-        <a href="#architecture">Architecture</a>
-        <a href="#start">Start</a>
+        <a href="#simulator">Simulator</a>
+        <a href="#diagnostics">Diagnostics</a>
+        <a href="#engine">Engine</a>
       </nav>
     </header>
 
     <main id="top">
-      <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-copy">
-          <p class="eyebrow">Vectorized scientific simulation</p>
-          <h1 id="hero-title">N-body gravity you can inspect, test, and extend.</h1>
+      <section class="lab-shell" id="simulator" aria-labelledby="hero-title">
+        <div class="lab-intro">
+          <p class="eyebrow">Interactive N-body environment</p>
+          <h1 id="hero-title">Run the gravity model in the website.</h1>
           <p class="lede">
-            A compact Python engine for research-style orbital mechanics, built around
-            readable force laws, explicit integrators, and diagnostics that expose whether
-            the math is behaving.
+            Change the system, tune the timestep, drag bodies through the field,
+            and watch conservation diagnostics respond as the simulation runs.
           </p>
-          <div class="hero-actions" aria-label="Primary actions">
-            <a class="button primary" href="#start">Run an example</a>
-            <a class="button secondary" href="#examples">View results</a>
+        </div>
+
+        <section class="simulator-panel" aria-label="Gravity simulator">
+          <div class="viewport-wrap">
+            <canvas id="simulationCanvas" width="1120" height="760" aria-label="Live N-body gravity simulation"></canvas>
+            <div class="viewport-overlay">
+              <div>
+                <span class="readout-label">Sim time</span>
+                <strong id="timeReadout">0.00</strong>
+              </div>
+              <div>
+                <span class="readout-label">Bodies</span>
+                <strong id="bodyReadout">3</strong>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <figure class="hero-figure">
-          <img
-            src="physics_engine/examples/two_body_orbit.png"
-            alt="Sun-Earth orbit chart comparing Velocity Verlet and Euler energy conservation."
-          />
-          <figcaption>Velocity Verlet holds long-term orbital energy nearly flat.</figcaption>
-        </figure>
+          <aside class="control-board" aria-label="Simulation controls">
+            <div class="control-row main-actions">
+              <button class="icon-button" id="playPause" type="button" aria-label="Pause simulation" title="Pause simulation">
+                <span id="playIcon">||</span>
+              </button>
+              <button class="text-button" id="resetButton" type="button">Reset</button>
+              <button class="text-button" id="spawnButton" type="button">Add Body</button>
+            </div>
+
+            <fieldset class="control-group">
+              <legend>Preset</legend>
+              <div class="segmented">
+                <button class="preset active" type="button" data-preset="figureEight">Figure Eight</button>
+                <button class="preset" type="button" data-preset="binary">Binary</button>
+                <button class="preset" type="button" data-preset="cluster">Cluster</button>
+              </div>
+            </fieldset>
+
+            <label class="range-control">
+              <span>Gravity</span>
+              <output id="gravityValue">1.00</output>
+              <input id="gravityInput" type="range" min="0.2" max="2.4" value="1" step="0.05" />
+            </label>
+
+            <label class="range-control">
+              <span>Timestep</span>
+              <output id="stepValue">0.008</output>
+              <input id="stepInput" type="range" min="0.002" max="0.024" value="0.008" step="0.001" />
+            </label>
+
+            <label class="range-control">
+              <span>Trail length</span>
+              <output id="trailValue">160</output>
+              <input id="trailInput" type="range" min="40" max="360" value="160" step="20" />
+            </label>
+
+            <div class="toggle-row">
+              <label><input id="vectorToggle" type="checkbox" checked /> Velocity vectors</label>
+              <label><input id="centerToggle" type="checkbox" checked /> Center view</label>
+            </div>
+          </aside>
+        </section>
       </section>
 
-      <section class="metrics" aria-label="Engine highlights">
-        <div>
-          <span class="metric-value">4</span>
-          <span class="metric-label">documented integrators</span>
-        </div>
-        <div>
-          <span class="metric-value">(N, 3)</span>
-          <span class="metric-label">array-native particle state</span>
-        </div>
-        <div>
-          <span class="metric-value">3</span>
-          <span class="metric-label">validation examples</span>
-        </div>
+      <section class="dashboard" id="diagnostics" aria-label="Live diagnostics">
+        <article>
+          <span class="metric-label">Total energy</span>
+          <strong id="energyReadout">0.000</strong>
+        </article>
+        <article>
+          <span class="metric-label">Momentum drift</span>
+          <strong id="momentumReadout">0.000</strong>
+        </article>
+        <article>
+          <span class="metric-label">Closest pass</span>
+          <strong id="distanceReadout">0.000</strong>
+        </article>
       </section>
 
-      <section class="section intro" aria-labelledby="intro-title">
+      <section class="section engine" id="engine" aria-labelledby="engine-title">
         <div>
-          <p class="eyebrow">Purpose</p>
-          <h2 id="intro-title">Built for correctness before spectacle.</h2>
+          <p class="eyebrow">What changed</p>
+          <h2 id="engine-title">The site is now the simulation surface.</h2>
         </div>
         <p>
-          The package favors transparent numerics over black-box behavior. Every example
-          tracks conservation laws, known analytic behavior, or a recognized benchmark, so
-          visual output is backed by measurable checks.
+          The browser version mirrors the Python package’s core idea: particle state,
+          Newtonian acceleration, an explicit timestep, and diagnostic checks. The Python
+          engine remains available for research runs, while this page gives visitors a
+          hands-on environment for exploring the same behavior instantly.
         </p>
       </section>
-
-      <section class="section examples" id="examples" aria-labelledby="examples-title">
-        <div class="section-heading">
-          <p class="eyebrow">Examples</p>
-          <h2 id="examples-title">Simulation outputs already in the repo</h2>
-        </div>
-
-        <article class="example-feature">
-          <img
-            src="physics_engine/examples/random_cluster.png"
-            alt="Random cluster simulation with conservation-law diagnostics."
-          />
-          <div>
-            <h3>Chaotic random cluster</h3>
-            <p>
-              A 20-body system with no analytic answer, useful for checking energy and
-              momentum conservation under messy close encounters.
-            </p>
-          </div>
-        </article>
-
-        <div class="example-grid">
-          <article>
-            <img
-              src="physics_engine/examples/figure_eight.png"
-              alt="Three-body figure-eight periodic orbit plot."
-            />
-            <h3>Figure-eight orbit</h3>
-            <p>A classic three-body choreography used as a correctness benchmark.</p>
-          </article>
-          <article>
-            <img
-              src="physics_engine/examples/two_body_orbit.png"
-              alt="Two-body orbit plot and relative energy error chart."
-            />
-            <h3>Sun-Earth orbit</h3>
-            <p>Compares Velocity Verlet against Euler to show long-run energy behavior.</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="section architecture" id="architecture" aria-labelledby="architecture-title">
-        <div class="section-heading">
-          <p class="eyebrow">Architecture</p>
-          <h2 id="architecture-title">Small modules with clear responsibilities</h2>
-        </div>
-        <div class="module-list">
-          <div><strong>particles.py</strong><span>array-backed positions, velocities, and masses</span></div>
-          <div><strong>forces.py</strong><span>Newtonian gravity, uniform fields, and combinations</span></div>
-          <div><strong>integrators.py</strong><span>Euler, semi-implicit Euler, Velocity Verlet, and RK4</span></div>
-          <div><strong>diagnostics.py</strong><span>energy, momentum, angular momentum, and center of mass</span></div>
-          <div><strong>simulation.py</strong><span>the orchestration layer for stepping and history</span></div>
-        </div>
-      </section>
-
-      <section class="section start" id="start" aria-labelledby="start-title">
-        <div>
-          <p class="eyebrow">Quick start</p>
-          <h2 id="start-title">Run it locally after cloning</h2>
-        </div>
-        <pre><code>pip install -r physics_engine/requirements.txt
-python physics_engine/examples/two_body_orbit.py</code></pre>
-      </section>
     </main>
+
+    <script>
+      const canvas = document.querySelector("#simulationCanvas");
+      const ctx = canvas.getContext("2d");
+      const controls = {
+        playPause: document.querySelector("#playPause"),
+        playIcon: document.querySelector("#playIcon"),
+        reset: document.querySelector("#resetButton"),
+        spawn: document.querySelector("#spawnButton"),
+        presets: document.querySelectorAll(".preset"),
+        gravity: document.querySelector("#gravityInput"),
+        step: document.querySelector("#stepInput"),
+        trail: document.querySelector("#trailInput"),
+        vectors: document.querySelector("#vectorToggle"),
+        center: document.querySelector("#centerToggle"),
+        gravityValue: document.querySelector("#gravityValue"),
+        stepValue: document.querySelector("#stepValue"),
+        trailValue: document.querySelector("#trailValue"),
+        time: document.querySelector("#timeReadout"),
+        body: document.querySelector("#bodyReadout"),
+        energy: document.querySelector("#energyReadout"),
+        momentum: document.querySelector("#momentumReadout"),
+        distance: document.querySelector("#distanceReadout"),
+      };
+
+      const palette = ["#e95f3d", "#35a7a1", "#f2c14e", "#7d9cff", "#b982ff", "#e8f0d8", "#ff8fb3"];
+      let bodies = [];
+      let activePreset = "figureEight";
+      let paused = false;
+      let simTime = 0;
+      let dragTarget = null;
+      let lastPointer = null;
+
+      const presets = {
+        figureEight: () => [
+          body(-0.97000436, 0.24308753, 0.466203685, 0.43236573, 1, palette[0]),
+          body(0.97000436, -0.24308753, 0.466203685, 0.43236573, 1, palette[1]),
+          body(0, 0, -0.93240737, -0.86473146, 1, palette[2]),
+        ],
+        binary: () => [
+          body(-0.72, 0, 0, -0.48, 1.35, palette[0]),
+          body(0.72, 0, 0, 0.48, 1.35, palette[1]),
+          body(0, 1.52, -0.72, 0.02, 0.08, palette[2]),
+          body(0, -1.82, 0.58, 0.03, 0.05, palette[3]),
+        ],
+        cluster: () => {
+          const seeded = [];
+          for (let i = 0; i < 12; i += 1) {
+            const angle = i * 2.39996;
+            const radius = 0.22 + i * 0.105;
+            seeded.push(body(
+              Math.cos(angle) * radius,
+              Math.sin(angle) * radius,
+              -Math.sin(angle) * 0.34,
+              Math.cos(angle) * 0.34,
+              0.16 + (i % 4) * 0.05,
+              palette[i % palette.length]
+            ));
+          }
+          return seeded;
+        },
+      };
+
+      function body(x, y, vx, vy, mass, color) {
+        return { x, y, vx, vy, mass, color, trail: [] };
+      }
+
+      function setPreset(name) {
+        activePreset = name;
+        bodies = presets[name]();
+        simTime = 0;
+        controls.presets.forEach((button) => button.classList.toggle("active", button.dataset.preset === name));
+      }
+
+      function acceleration(target, all) {
+        let ax = 0;
+        let ay = 0;
+        const g = Number(controls.gravity.value);
+        for (const source of all) {
+          if (source === target) continue;
+          const dx = source.x - target.x;
+          const dy = source.y - target.y;
+          const distSq = dx * dx + dy * dy + 0.018;
+          const invDist = 1 / Math.sqrt(distSq);
+          const strength = g * source.mass * invDist * invDist * invDist;
+          ax += dx * strength;
+          ay += dy * strength;
+        }
+        return { ax, ay };
+      }
+
+      function stepSimulation() {
+        const dt = Number(controls.step.value);
+        const accels = bodies.map((item) => acceleration(item, bodies));
+        bodies.forEach((item, index) => {
+          if (item === dragTarget) return;
+          item.vx += accels[index].ax * dt;
+          item.vy += accels[index].ay * dt;
+          item.x += item.vx * dt;
+          item.y += item.vy * dt;
+          item.trail.push({ x: item.x, y: item.y });
+          if (item.trail.length > Number(controls.trail.value)) item.trail.shift();
+        });
+        simTime += dt;
+      }
+
+      function diagnostics() {
+        let kinetic = 0;
+        let potential = 0;
+        let px = 0;
+        let py = 0;
+        let closest = Infinity;
+        const g = Number(controls.gravity.value);
+        bodies.forEach((a, i) => {
+          kinetic += 0.5 * a.mass * (a.vx * a.vx + a.vy * a.vy);
+          px += a.mass * a.vx;
+          py += a.mass * a.vy;
+          for (let j = i + 1; j < bodies.length; j += 1) {
+            const b = bodies[j];
+            const distance = Math.hypot(a.x - b.x, a.y - b.y);
+            closest = Math.min(closest, distance);
+            potential -= (g * a.mass * b.mass) / Math.max(distance, 0.08);
+          }
+        });
+        controls.energy.textContent = (kinetic + potential).toFixed(3);
+        controls.momentum.textContent = Math.hypot(px, py).toFixed(3);
+        controls.distance.textContent = closest === Infinity ? "0.000" : closest.toFixed(3);
+        controls.time.textContent = simTime.toFixed(2);
+        controls.body.textContent = bodies.length;
+      }
+
+      function camera() {
+        const rect = canvas.getBoundingClientRect();
+        let cx = 0;
+        let cy = 0;
+        if (controls.center.checked && bodies.length) {
+          let mass = 0;
+          bodies.forEach((item) => {
+            mass += item.mass;
+            cx += item.x * item.mass;
+            cy += item.y * item.mass;
+          });
+          cx /= mass;
+          cy /= mass;
+        }
+        const scale = Math.min(rect.width, rect.height) * 0.28;
+        return { width: rect.width, height: rect.height, cx, cy, scale };
+      }
+
+      function project(point, cam = camera()) {
+        return {
+          x: cam.width / 2 + (point.x - cam.cx) * cam.scale,
+          y: cam.height / 2 + (point.y - cam.cy) * cam.scale,
+        };
+      }
+
+      function unproject(point, cam = camera()) {
+        return {
+          x: (point.x - cam.width / 2) / cam.scale + cam.cx,
+          y: (point.y - cam.height / 2) / cam.scale + cam.cy,
+        };
+      }
+
+      function draw() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        if (canvas.width !== Math.floor(rect.width * dpr) || canvas.height !== Math.floor(rect.height * dpr)) {
+          canvas.width = Math.floor(rect.width * dpr);
+          canvas.height = Math.floor(rect.height * dpr);
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const cam = camera();
+        ctx.clearRect(0, 0, cam.width, cam.height);
+
+        ctx.fillStyle = "#111712";
+        ctx.fillRect(0, 0, cam.width, cam.height);
+        ctx.strokeStyle = "rgba(232, 240, 216, 0.08)";
+        ctx.lineWidth = 1;
+        for (let x = 0; x < cam.width; x += 44) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, cam.height);
+          ctx.stroke();
+        }
+        for (let y = 0; y < cam.height; y += 44) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(cam.width, y);
+          ctx.stroke();
+        }
+
+        bodies.forEach((item) => {
+          if (item.trail.length > 1) {
+            ctx.beginPath();
+            item.trail.forEach((point, index) => {
+              const p = project(point, cam);
+              if (index === 0) ctx.moveTo(p.x, p.y);
+              else ctx.lineTo(p.x, p.y);
+            });
+            ctx.strokeStyle = item.color + "88";
+            ctx.lineWidth = 1.6;
+            ctx.stroke();
+          }
+        });
+
+        bodies.forEach((item) => {
+          const p = project(item, cam);
+          const radius = Math.max(5, Math.min(18, 8 + item.mass * 3));
+          if (controls.vectors.checked) {
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p.x + item.vx * 52, p.y + item.vy * 52);
+            ctx.strokeStyle = "rgba(232, 240, 216, 0.58)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, radius + 7, 0, Math.PI * 2);
+          ctx.fillStyle = item.color + "1f";
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+          ctx.fillStyle = item.color;
+          ctx.fill();
+        });
+
+        diagnostics();
+      }
+
+      function loop() {
+        if (!paused) {
+          for (let i = 0; i < 4; i += 1) stepSimulation();
+        }
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      controls.playPause.addEventListener("click", () => {
+        paused = !paused;
+        controls.playIcon.textContent = paused ? ">" : "||";
+        controls.playPause.setAttribute("aria-label", paused ? "Play simulation" : "Pause simulation");
+      });
+
+      controls.reset.addEventListener("click", () => setPreset(activePreset));
+      controls.spawn.addEventListener("click", () => {
+        const angle = simTime * 1.7 + bodies.length;
+        bodies.push(body(Math.cos(angle) * 1.45, Math.sin(angle) * 1.45, -Math.sin(angle) * 0.45, Math.cos(angle) * 0.45, 0.18, palette[bodies.length % palette.length]));
+      });
+      controls.presets.forEach((button) => button.addEventListener("click", () => setPreset(button.dataset.preset)));
+      controls.gravity.addEventListener("input", () => controls.gravityValue.textContent = Number(controls.gravity.value).toFixed(2));
+      controls.step.addEventListener("input", () => controls.stepValue.textContent = Number(controls.step.value).toFixed(3));
+      controls.trail.addEventListener("input", () => controls.trailValue.textContent = controls.trail.value);
+
+      canvas.addEventListener("pointerdown", (event) => {
+        const rect = canvas.getBoundingClientRect();
+        const pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+        const cam = camera();
+        dragTarget = bodies.find((item) => {
+          const p = project(item, cam);
+          return Math.hypot(p.x - pointer.x, p.y - pointer.y) < 24;
+        });
+        lastPointer = pointer;
+        if (dragTarget) canvas.setPointerCapture(event.pointerId);
+      });
+
+      canvas.addEventListener("pointermove", (event) => {
+        if (!dragTarget) return;
+        const rect = canvas.getBoundingClientRect();
+        const pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+        const world = unproject(pointer);
+        const previous = unproject(lastPointer);
+        dragTarget.x = world.x;
+        dragTarget.y = world.y;
+        dragTarget.vx = (world.x - previous.x) / 0.08;
+        dragTarget.vy = (world.y - previous.y) / 0.08;
+        dragTarget.trail = [];
+        lastPointer = pointer;
+      });
+
+      canvas.addEventListener("pointerup", () => {
+        dragTarget = null;
+        lastPointer = null;
+      });
+
+      setPreset("figureEight");
+      loop();
+    </script>
   </body>
 </html>
