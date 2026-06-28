@@ -1,148 +1,97 @@
-# physics_engine
+# 🧬 The Physics & Mathematics Behind the SAT Engine
 
-A small, vectorized N-body gravity engine in Python, built for research /
-scientific simulation rather than for games. It prioritizes:
+The architecture is split into two primary pipelines: **Collision Detection** (identifying if and how shapes intersect using geometry) and **Collision Resolution** (calculating new velocities based on Newtonian mechanics).
 
-- **Correctness you can verify** — every example tracks energy, momentum
-  conservation, or a known analytic solution, instead of just "looking right."
-- **Transparent numerics** — no integrator or force law is a black box;
-  each one is a short, readable function with the physics in the docstring.
-- **A clean extension point** — adding rigid bodies, collisions, or new
-  force laws later doesn't require touching the existing code.
+---
 
-## Architecture
+## 1. Collision Detection: Separating Axis Theorem (SAT)
 
-```
-physics_engine/
-  particles.py     ParticleSystem - positions/velocities/masses as NumPy arrays
-  forces.py         acceleration models: Newtonian N-body gravity, uniform field
-  integrators.py    Euler, semi-implicit Euler, Velocity Verlet, RK4
-  diagnostics.py     energy, momentum, angular momentum, center of mass
-  simulation.py      Simulation - wires a system + force model + integrator together
-  examples/
-    two_body_orbit.py    Sun-Earth orbit; Verlet vs Euler energy drift
-    random_cluster.py    20-body cluster; conservation-law sanity check
-    figure_eight.py      classic 3-body choreography; correctness benchmark
-```
+The Separating Axis Theorem is the geometric backbone of this engine. It states that:
+> *Two convex polyhedra (or polygons in 2D) do not intersect if and only if there exists a line (axis) upon which their projections do not overlap.*
 
-Everything operates on plain `(N, 3)` NumPy arrays rather than a list of
-per-particle Python objects, so a force law or integrator is just one
-vectorized function call across all N particles — this matters once N
-gets past a few dozen.
+Think of it like shining a flashlight on two shapes from different angles. If you can find an angle where their shadows do not touch, the shapes are completely separated.
 
-## Quick start
+### Step A: Generating Test Axes
+To determine if two polygons are colliding, the engine must test a finite set of potential separating axes. In 2D, these axes are the **normal vectors (perpendicular lines)** to every single edge of both shapes.
 
-```bash
-pip install numpy matplotlib
-python examples/two_body_orbit.py
-```
+For any edge vector $\vec{E} = (x_2 - x_1, y_2 - y_1)$, its perpendicular normal vector $\vec{N}$ is calculated as:
+$$\vec{N} = (-y, x)$$
 
-```python
-import numpy as np
-from functools import partial
-from physics_engine import ParticleSystem, Simulation, forces
+This vector is then normalized to a unit vector ($\hat{n}$) to ensure consistent projection mathematics:
+$$\hat{n} = \frac{\vec{N}}{\|\vec{N}\|}$$
 
-# Two bodies, arbitrary consistent units
-system = ParticleSystem(
-    positions=[[0, 0, 0], [1, 0, 0]],
-    velocities=[[0, 0, 0], [0, 1, 0]],
-    masses=[1.0, 1e-3],
-)
-accel_fn = partial(forces.newtonian_gravity, G=1.0)
-sim = Simulation(system, accel_fn, integrator="velocity_verlet", dt=0.001)
-sim.run(n_steps=10000)
+### Step B: Vertex Projection
+Next, every vertex of both polygons is projected onto the chosen unit normal axis ($\hat{n}$) using the vector **Dot Product**:
+$$P = \vec{V} \cdot \hat{n}$$
 
-t, positions, velocities = sim.history_arrays()  # shape (steps, N, 3)
-```
+By tracking the projections of all vertices for a single shape, we determine its shadow's span along that axis:
+* $\text{Min} = \min(P_1, P_2, \dots, P_n)$
+* $\text{Max} = \max(P_1, P_2, \dots, P_n)$
 
-## Units
+### Step C: Overlap Check & Minimum Translation Vector (MTV)
+The engine checks if the projection intervals $[Min_A, Max_A]$ and $[Min_B, Max_B]$ overlap. 
+* If **any single axis** shows a gap where $Min_B > Max_A$ or $Min_A > Max_B$, the theorem immediately proves the shapes **are not colliding**, and the loop breaks early (Short-circuit optimization).
+* If **all axes** show an overlap, a collision is guaranteed. 
 
-The engine doesn't impose a unit system — it just requires `G`, masses,
-positions, and velocities to all be in one *consistent* system. Two
-common choices, both used in the examples:
+The engine logs the axis with the **smallest overlap amount**. This axis is designated as the collision normal ($\hat{n}_c$), and the overlap distance is the **penetration depth** ($d$). Together, they form the **Minimum Translation Vector (MTV)**:
+$$\vec{\text{MTV}} = d \cdot \hat{n}_c$$
 
-| System | Distance | Time | Mass | G |
-|---|---|---|---|---|
-| SI | m | s | kg | 6.674e-11 |
-| Astronomical | AU | year | solar mass | 4π² |
+*Note: In the positional correction step, the engine shifts the shapes along this vector to instantly resolve intersection overlapping before rendering.*
 
-The astronomical system is convenient because it avoids the huge/tiny
-numbers of SI when simulating planetary or stellar systems.
+---
 
-## Choosing an integrator
+## 2. Rigid Body Kinematics & Linear Dynamics
 
-This is the most consequential decision in any N-body code, so all four
-are implemented and documented rather than picking one for you:
+Once a frame begins, objects move through space using Euler integration to approximate Newtonian equations of motion over discrete time slices ($\Delta t$).
 
-| Integrator | Order | Symplectic? | When to use |
-|---|---|---|---|
-| `euler` | 1st | No | Never for real runs — included as a baseline to show why it's wrong |
-| `semi_implicit_euler` | 1st | Yes | Quick/cheap simulations where rough qualitative behavior is enough |
-| `velocity_verlet` | 2nd | Yes | **Default choice** for N-body / orbital mechanics — excellent long-term energy behavior |
-| `rk4` | 4th | No | When you need high per-step accuracy (e.g. matching an analytic solution over a short window); energy can still drift slowly over very long runs |
+### Force Integration
+Every physical rigid body processes accumulated linear forces ($\vec{F}$) to update its linear acceleration ($\vec{a}$), obeying **Newton's Second Law**:
+$$\vec{a} = \frac{\vec{F}}{m}$$
 
-"Symplectic" matters more than raw order for long simulations: a
-symplectic integrator's energy error stays *bounded* and oscillates
-around the true value forever, while a non-symplectic one's error
-*accumulates* monotonically. `examples/two_body_orbit.py` shows this
-directly — Velocity Verlet holds energy flat over 4 years, Euler drifts
-by 20%.
+Where $m$ is the mass of the object. For static objects (like floors or walls), mass is treated as infinite ($m = \infty$), which reduces acceleration down to zero ($1/\infty = 0$).
 
-## Validating the engine
+### Kinematic Updates
+The engine updates linear velocity ($\vec{v}$) and spatial position ($\vec{x}$) point-by-point via:
+$$\vec{v}_{\text{new}} = \vec{v}_{\text{old}} + \vec{a} \cdot \Delta t$$
+$$\vec{x}_{\text{new}} = \vec{x}_{\text{old}} + \vec{v}_{\text{new}} \cdot \Delta t$$
 
-Three examples double as correctness tests:
+---
 
-1. **`two_body_orbit.py`** — Sun-Earth, should trace a closed circle.
-   Velocity Verlet's energy error stays ~0%; Euler's grows monotonically.
-2. **`figure_eight.py`** — the proven three-body "figure-eight" periodic
-   orbit (Chenciner & Montgomery, 2000). If the curve closes up cleanly,
-   the force law and integrator are both correct — this is a standard
-   benchmark for new N-body codes.
-3. **`random_cluster.py`** — a chaotic 20-body system with no analytic
-   answer. Here you check energy/momentum conservation instead: total
-   momentum should stay ~0 to machine precision (Newton's third law is
-   exact in the vectorized force law), and total energy should stay
-   bounded to a fraction of a percent if the timestep and softening are
-   well chosen.
+## 3. Collision Resolution: Impulse Method
 
-**A practical note from tuning that last example:** random initial
-velocities are very often far too small relative to the depth of the
-potential well, so the system free-falls into a violent core collapse
-that *no* fixed-timestep integrator can resolve accurately — large
-energy errors there usually mean "timestep too big for this close
-encounter," not a bug in the force law. The fix used here is to rescale
-initial velocities toward rough virial equilibrium (2·KE ≈ |PE|) and use
-a non-trivial softening length. For real research use beyond toy
-examples, the standard solution is an **adaptive** or **individual**
-timestep scheme (shrink dt during close encounters) rather than a single
-global fixed dt — a natural next addition to this engine.
+When an overlap is confirmed, the engine applies an instantaneous force (an **Impulse**, $\vec{J}$) at the contact boundary to change velocities instantly, simulating a realistic rebound.
 
-## Extending the engine
+### Relative Velocity
+First, the engine determines the relative speed ($\vec{v}_{\text{rel}}$) between Body A and Body B along the collision normal ($\hat{n}$):
+$$\vec{v}_{\text{rel}} = \vec{v}_B - \vec{v}_A$$
+$$v_{\text{normal}} = \vec{v}_{\text{rel}} \cdot \hat{n}$$
 
-- **New force law**: write `accel_fn(positions, masses) -> (N,3)` and pass
-  it to `Simulation` (optionally combine with `forces.combine(...)`).
-- **Collisions / rigid bodies**: this is the natural next layer. Add a
-  `shapes.py` (sphere/box geometry + orientation, represented as a
-  quaternion or rotation matrix per body), a `collisions.py`
-  (broad-phase pruning + narrow-phase contact generation), and an
-  impulse- or constraint-based contact resolver that runs after the
-  integrator's position update each step.
-- **Bigger N**: `forces.newtonian_gravity` is O(N²); past a few thousand
-  particles you'd swap in a Barnes-Hut tree or Particle-Mesh method
-  behind the same `accel_fn(positions, masses)` interface — nothing else
-  in the engine would need to change.
-- **Adaptive timestep**: wrap `Simulation.step` to shrink `dt` when the
-  closest pairwise distance drops below some threshold, then grow it
-  back afterward.
-- **Cross-check against SciPy**: for a second opinion on accuracy, the
-  same `forces.newtonian_gravity` acceleration function can be wrapped
-  as the right-hand side of `scipy.integrate.solve_ivp` (e.g. with
-  `method="DOP853"` for an adaptive high-order reference solution) and
-  compared against this engine's trajectory.
+If $v_{\text{normal}} > 0$, the objects are already moving apart, and the resolution physics step is safely skipped.
 
-## References
+### Calculating the Impulse Scalar ($j$)
+To find the exact magnitude of the bounce impulse, the engine uses the linear conservation of momentum equation combined with a Coefficient of Restitution ($e$), which determines how "bouncy" the material is ($0$ for a lump of clay, $1$ for a perfect superball):
 
-- Aarseth, S. J. (2003). *Gravitational N-Body Simulations*. Cambridge University Press.
-- Chenciner, A. & Montgomery, R. (2000). "A remarkable periodic solution
-  of the three-body problem in the case of equal masses." *Annals of
-  Mathematics*, 152(3), 881–901.
+$$j = \frac{-(1 + e)(\vec{v}_{\text{rel}} \cdot \hat{n})}{\frac{1}{m_A} + \frac{1}{m_B}}$$
+
+### Applying the Impulse Vector
+Once the scalar value $j$ is solved, the impulse vector $\vec{J} = j \cdot \hat{n}$ is distributed dynamically across both objects relative to their inverse mass weightings:
+$$\vec{v}_A = \vec{v}_A - \frac{\vec{J}}{m_A}$$
+$$\vec{v}_B = \vec{v}_B + \frac{\vec{J}}{m_B}$$
+
+---
+
+## 4. Friction Model (Coulomb Friction)
+
+To prevent objects from sliding endlessly across surfaces like ice, a friction tangent vector is evaluated.
+
+1. **Find the Tangent Axis:** The engine computes a direction vector perpendicular to the collision normal that matches the sliding path:
+   $$\hat{t} = \vec{v}_{\text{rel}} - (\vec{v}_{\text{rel}} \cdot \hat{n})\hat{n}$$
+   $$\hat{t} = \frac{\hat{t}}{\|\hat{t}\|}$$
+
+2. **Calculate Friction Magnitude ($j_t$):** Using a similar formulation to the impulse bounce equation, the tangential resistance scalar is calculated:
+   $$j_t = \frac{-(\vec{v}_{\text{rel}} \cdot \hat{t})}{\frac{1}{m_A} + \frac{1}{m_B}}$$
+
+3. **Coulomb's Law Clamping:** According to Coulomb's Friction Law, the force of friction cannot exceed the normal clamping force scaled by the friction coefficient ($\mu$). The engine clamps the absolute friction impulse:
+   $$|j_t| \le j \cdot \mu$$
+
+The resulting validated friction impulse vector ($\vec{J}_t = j_t \cdot \hat{t}$) is then applied back to the bodies to accurately simulate surface dragging resistance.
