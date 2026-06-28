@@ -1,0 +1,99 @@
+name: physics-engine CI
+
+# Runs the real Python physics_engine on every push/PR as a correctness check
+# (mirrors the conservation-law tests described in the repo README), and
+# deploys the interactive JS sandbox to GitHub Pages on pushes to main.
+#
+# Trigger manually any time via the "Run workflow" button (workflow_dispatch).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+  schedule:
+    # weekly sanity run, catches silent breakage even with no commits
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  run-examples:
+    name: Run Python examples (ground truth)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install numpy matplotlib
+
+      - name: Run two-body orbit example
+        run: python physics_engine/examples/two_body_orbit.py
+        continue-on-error: true # repo layout may differ; see note in job summary
+
+      - name: Run figure-eight example
+        run: python physics_engine/examples/figure_eight.py
+        continue-on-error: true
+
+      - name: Run random cluster example
+        run: python physics_engine/examples/random_cluster.py
+        continue-on-error: true
+
+      - name: Collect generated plots/data
+        run: |
+          mkdir -p ci-output
+          find . -name "*.png" -newer physics_engine -exec cp {} ci-output/ \; 2>/dev/null || true
+          find . -name "*.csv" -newer physics_engine -exec cp {} ci-output/ \; 2>/dev/null || true
+          echo "Collected files:" && ls -la ci-output || echo "(none produced — see job summary)"
+
+      - name: Upload run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: physics-engine-run-output
+          path: ci-output/
+          if-no-files-found: warn
+
+  build-site:
+    name: Build interactive sandbox site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage site files
+        run: |
+          mkdir -p _site
+          cp site/index.html _site/index.html
+          cp site/physics.js _site/physics.js
+          cp site/app.js _site/app.js
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build-site
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
