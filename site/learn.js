@@ -336,8 +336,7 @@ velocity, and restitution) and applied at the contact point to update
 linear and angular velocities. Run across all colliding pairs each
 step, this is what lets an engine scale SAT-based narrow-phase checks
 up to full N-body dynamics.`,
-};
-  
+
     children: [
       {
         id: 'sat-detection',
