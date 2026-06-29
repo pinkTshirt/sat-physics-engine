@@ -51,10 +51,7 @@ $$\vec{a} = \frac{\vec{F}}{m}$$
 Where $m$ is the mass of the object. For static objects (like floors or walls), mass is treated as infinite ($m = \infty$), which reduces acceleration down to zero ($1/\infty = 0$).
 
 ### Kinematic Updates
-The engine updates linear velocity ($\vec{v}$) and spatial position ($\vec{x}$) point-by-point via:
-$$\vec{v}_{\text{new}} = \vec{v}_{\text{old}} + \vec{a} \cdot \Delta t$$
-$$\vec{x}_{\text{new}} = \vec{x}_{\text{old}} + \vec{v}_{\text{new}} \cdot \Delta t$$
-
+The engine updates linear velocity and spatial position point-by-point 
 ---
 
 ## 3. Collision Resolution: Impulse Method
@@ -62,9 +59,7 @@ $$\vec{x}_{\text{new}} = \vec{x}_{\text{old}} + \vec{v}_{\text{new}} \cdot \Delt
 When an overlap is confirmed, the engine applies an instantaneous force (an **Impulse**, $\vec{J}$) at the contact boundary to change velocities instantly, simulating a realistic rebound.
 
 ### Relative Velocity
-First, the engine determines the relative speed ($\vec{v}_{\text{rel}}$) between Body A and Body B along the collision normal ($\hat{n}$):
-$$\vec{v}_{\text{rel}} = \vec{v}_B - \vec{v}_A$$
-$$v_{\text{normal}} = \vec{v}_{\text{rel}} \cdot \hat{n}$$
+First, the engine determines the relative speed between Body A and Body B along the collision normal 
 
 If $v_{\text{normal}} > 0$, the objects are already moving apart, and the resolution physics step is safely skipped.
 
